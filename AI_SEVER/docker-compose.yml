@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  ai-server:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - DB_HOST=localhost
+      - DB_USER=root
+      - DB_PASSWORD=your_password
+      - DB_NAME=store_db
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
