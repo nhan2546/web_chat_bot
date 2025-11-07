@@ -1,34 +1,47 @@
-# ai-api/app.py (Optimized for Level 1)
+# Tệp: AI_SEVER/app.py
+# Đã nâng cấp để sử dụng PostgreSQL (Neon) thay vì MySQL
+
+import os
+import psycopg2 # <-- Thư viện mới
+import psycopg2.extras # <-- Thư viện mới để lấy dữ liệu dạng Dictionary
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import mysql.connector
 import requests
 import json
-import os
 from datetime import datetime
 
+# --- Cấu hình (Config) ---
 app = Flask(__name__)
 CORS(app)
 
-# Config
+# Lấy URL kết nối Neon từ biến môi trường của Render
+DATABASE_URL = os.getenv('DATABASE_URL') 
+# Lấy URL của Ollama
 OLLAMA_URL = os.getenv('OLLAMA_HOST', 'http://ollama:11434')
-DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'user': os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASSWORD', ''),
-    'database': os.getenv('DB_NAME', 'store_db')
-}
+
+print("🚀 AI SERVER ĐANG KHỞI ĐỘNG...")
+if not DATABASE_URL:
+    print("❌ LỖI NGHIÊM TRỌNG: Biến môi trường 'DATABASE_URL' chưa được cài đặt.")
+
+# --- Lớp AI Chính ---
 
 class StoreAIAssistant:
     def __init__(self):
         self.db = self.connect_db()
-    
+        if self.db:
+            print("✅ Đã kết nối thành công đến Neon (PostgreSQL)!")
+        
     def connect_db(self):
-        """Kết nối database"""
+        """Kết nối đến database PostgreSQL (Neon)"""
+        if not DATABASE_URL:
+            print("❌ Lỗi kết nối: DATABASE_URL không tồn tại.")
+            return None
         try:
-            return mysql.connector.connect(**DB_CONFIG)
+            # Kết nối bằng URL từ Render
+            return psycopg2.connect(DATABASE_URL)
         except Exception as e:
-            print(f"Database connection error: {e}")
+            # Ghi lại lỗi đầy đủ vào Logs của Render
+            print(f"❌ Lỗi kết nối Database Neon nghiêm trọng: {e}")
             return None
     
     def get_store_context(self):
@@ -37,9 +50,11 @@ class StoreAIAssistant:
             return "Không thể kết nối database"
         
         try:
-            cursor = self.db.cursor(dictionary=True)
+            # Sử dụng 'psycopg2.extras.DictCursor' để lấy kết quả dạng dictionary
+            # (tương đương 'dictionary=True' của MySQL)
+            cursor = self.db.cursor(cursor_factory=psycopg2.extras.DictCursor)
             
-            # Lấy sản phẩm với categories
+            # Lấy sản phẩm với categories (SQL vẫn tương thích)
             cursor.execute("""
                 SELECT p.id, p.name, p.price, p.sale_price, p.stock_quantity, 
                        p.description, c.name as category_name
@@ -76,15 +91,22 @@ class StoreAIAssistant:
             }
             
         except Exception as e:
+            # Nếu kết nối bị mất, thử kết nối lại
+            print(f"Lỗi lấy dữ liệu: {e}. Đang thử kết nối lại...")
+            self.db = self.connect_db() # Thử kết nối lại
             return f"Lỗi lấy dữ liệu: {str(e)}"
     
     def create_smart_prompt(self, user_query, db_context):
-        """Tạo prompt thông minh cho AI"""
+        """Tạo prompt thông minh cho AI (Không thay đổi)"""
         
+        # Kiểm tra nếu db_context là một chuỗi lỗi
+        if isinstance(db_context, str):
+            return f"Không thể lấy thông tin cửa hàng: {db_context}. Hãy báo cho khách hàng."
+
         # Format products info
         products_text = "\n".join([
             f"- {p['name']} (ID:{p['id']}): {self.format_price(p)} | Tồn kho: {p['stock_quantity']} | Danh mục: {p['category_name']}"
-            for p in db_context.get('products', [])[:15]  # Giới hạn để prompt không quá dài
+            for p in db_context.get('products', [])[:15] # Giới hạn để prompt không quá dài
         ])
         
         # Format categories
@@ -125,18 +147,18 @@ SẢN PHẨM BÁN CHẠY:
         return prompt
     
     def format_price(self, product):
-        """Định dạng thông tin giá"""
+        """Định dạng thông tin giá (Không thay đổi)"""
         if product['sale_price'] and product['sale_price'] < product['price']:
             return f"{self.format_currency(product['sale_price'])} (Khuyến mãi từ {self.format_currency(product['price'])})"
         else:
             return self.format_currency(product['price'])
     
     def format_currency(self, amount):
-        """Định dạng tiền tệ"""
+        """Định dạng tiền tệ (Không thay đổi)"""
         return f"{int(amount):,} VNĐ"
     
     def call_ollama(self, prompt):
-        """Gọi Ollama API"""
+        """Gọi Ollama API (Không thay đổi)"""
         try:
             response = requests.post(
                 f"{OLLAMA_URL}/api/generate",
@@ -160,10 +182,10 @@ SẢN PHẨM BÁN CHẠY:
         except requests.exceptions.Timeout:
             return "Xin lỗi, phản hồi đang mất nhiều thời gian. Vui lòng thử lại với câu hỏi cụ thể hơn."
         except Exception as e:
-            return f"Xin lỗi, có lỗi xảy ra: {str(e)}"
+            return f"Xin lỗi, có lỗi xảy ra khi gọi AI: {str(e)}"
     
     def process_query(self, user_query):
-        """Xử lý query từ người dùng"""
+        """Xử lý query từ người dùng (Không thay đổi)"""
         # 1. Lấy context từ database
         db_context = self.get_store_context()
         
@@ -176,40 +198,49 @@ SẢN PHẨM BÁN CHẠY:
         # 4. Log conversation
         self.log_conversation(user_query, ai_response)
         
-        return {
-            'answer': ai_response,
-            'context_used': {
+        context_used = {}
+        if isinstance(db_context, dict):
+            context_used = {
                 'products_count': len(db_context.get('products', [])),
                 'categories_count': len(db_context.get('categories', [])),
                 'timestamp': datetime.now().isoformat()
             }
+
+        return {
+            'answer': ai_response,
+            'context_used': context_used
         }
     
     def log_conversation(self, user_message, ai_response):
         """Log conversation để cải thiện AI"""
         if not self.db:
+            print("Lỗi Log: Không có kết nối database.")
             return
         
         try:
             cursor = self.db.cursor()
+            # Cú pháp %s của PostgreSQL giống MySQL
             cursor.execute("""
                 INSERT INTO ai_conversations (user_message, ai_response, timestamp) 
                 VALUES (%s, %s, NOW())
-            """, (user_message[:500], ai_response[:1000]))  # Giới hạn độ dài
-            self.db.commit()
+            """, (user_message[:500], ai_response[:1000])) # Giới hạn độ dài
+            self.db.commit() # Quan trọng: Phải commit sau khi INSERT
             cursor.close()
         except Exception as e:
-            print(f"Logging error: {e}")
+            print(f"Lỗi Log: {e}")
+            self.db.rollback() # Hoàn tác nếu có lỗi
 
-# Khởi tạo AI
+# --- Khởi tạo và API Routes ---
+
+# Khởi tạo AI (Chỉ 1 lần)
 ai_assistant = StoreAIAssistant()
 
-# API Routes
 @app.route('/api/health', methods=['GET'])
 def health_check():
+    """Kiểm tra sức khỏe dịch vụ"""
     return jsonify({
         "status": "healthy", 
-        "service": "Store AI Assistant - Level 1",
+        "service": "Store AI Assistant - Level 1 (PostgreSQL)",
         "timestamp": datetime.now().isoformat()
     })
 
@@ -243,6 +274,7 @@ def chat():
         })
         
     except Exception as e:
+        print(f"❌ LỖI NGHIÊM TRỌNG TRONG /api/chat: {e}")
         return jsonify({
             "error": f"Lỗi xử lý: {str(e)}",
             "timestamp": datetime.now().isoformat()
@@ -257,5 +289,11 @@ def store_info():
         "timestamp": datetime.now().isoformat()
     })
 
+# --- Chạy máy chủ ---
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    # Chạy máy chủ Gunicorn (hoặc Flask dev server)
+    # Render sẽ sử dụng Gunicorn (trong Start Command), không chạy qua đây
+    # Dòng này chỉ dùng khi chạy local
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
