@@ -1,5 +1,5 @@
 flask
 gunicorn
 flask-cors
-mysql-connector-python
 requests
+psycopg2-binary
